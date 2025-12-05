@@ -22,3 +22,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# AWS CDK
+infrastructure/cdk.out/
+*.js
+*.d.ts
+
+# Test JSON files (AWS CLI testing)
+query-params.json
+get-key.json
+new-item.json

@@ -1,0 +1,27 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc && esbuild src/handlers/*.ts --bundle --platform=node --target=node18 --outdir=dist/handlers --external:@aws-sdk/*",
+    "watch": "tsc --watch",
+    "clean": "rm -rf dist",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.943.0",
+    "@aws-sdk/lib-dynamodb": "^3.943.0",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.159",
+    "@types/node": "^24.10.1",
+    "esbuild": "^0.27.1",
+    "typescript": "^5.9.3"
+  }
+}
