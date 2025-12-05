@@ -20,15 +20,33 @@ export const UnifiedCollaborationHistory = ({ refreshKey }: UnifiedCollaboration
   const [editingCollaboration, setEditingCollaboration] = useState<CollaborationData | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [insights, setInsights] = useState<any>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     loadCollaborations();
   }, [refreshKey]);
 
-  const loadCollaborations = () => {
-    const data = UnifiedDataService.getCollaborations();
-    setCollaborations(data.sort((a, b) => b.dateCalculated.getTime() - a.dateCalculated.getTime()));
+  const loadCollaborations = async () => {
+    setIsLoading(true);
+    try {
+      const data = await UnifiedDataService.getCollaborations();
+      setCollaborations(data.sort((a, b) => b.dateCalculated.getTime() - a.dateCalculated.getTime()));
+
+      // Load insights
+      const insightsData = await UnifiedDataService.getInsights();
+      setInsights(insightsData);
+    } catch (error) {
+      console.error('Error loading collaborations:', error);
+      toast({
+        title: "Load Failed",
+        description: "Failed to load collaborations from cloud. Showing local data.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const filteredCollaborations = collaborations.filter(collab =>
@@ -40,7 +58,7 @@ export const UnifiedCollaborationHistory = ({ refreshKey }: UnifiedCollaboration
     setIsEditDialogOpen(true);
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCollaboration) return;
 
@@ -50,30 +68,48 @@ export const UnifiedCollaborationHistory = ({ refreshKey }: UnifiedCollaboration
     const datePosted = formData.get('datePosted') as string;
     const notes = formData.get('notes') as string;
 
-    UnifiedDataService.updateCollaboration(editingCollaboration.id, {
-      actualViews: actualViews || undefined,
-      actualPrice: actualPrice || undefined,
-      datePosted: datePosted ? new Date(datePosted) : undefined,
-      notes: notes || undefined,
-    });
+    try {
+      await UnifiedDataService.updateCollaboration(editingCollaboration.id, {
+        actualViews: actualViews || undefined,
+        actualPrice: actualPrice || undefined,
+        datePosted: datePosted ? new Date(datePosted) : undefined,
+        notes: notes || undefined,
+      });
 
-    setIsEditDialogOpen(false);
-    setEditingCollaboration(null);
-    loadCollaborations();
+      setIsEditDialogOpen(false);
+      setEditingCollaboration(null);
+      loadCollaborations();
 
-    toast({
-      title: "Collaboration Updated",
-      description: `Updated results for ${editingCollaboration.creatorName}`,
-    });
+      toast({
+        title: "Collaboration Updated",
+        description: `Updated results for ${editingCollaboration.creatorName}`,
+      });
+    } catch (error) {
+      console.error('Error updating collaboration:', error);
+      toast({
+        title: "Update Failed",
+        description: "Failed to update collaboration",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleDeleteCollaboration = (id: string) => {
-    UnifiedDataService.deleteCollaboration(id);
-    loadCollaborations();
-    toast({
-      title: "Collaboration Deleted",
-      description: "Collaboration has been removed from history",
-    });
+  const handleDeleteCollaboration = async (id: string) => {
+    try {
+      await UnifiedDataService.deleteCollaboration(id);
+      loadCollaborations();
+      toast({
+        title: "Collaboration Deleted",
+        description: "Collaboration has been removed from history",
+      });
+    } catch (error) {
+      console.error('Error deleting collaboration:', error);
+      toast({
+        title: "Delete Failed",
+        description: "Failed to delete collaboration",
+        variant: "destructive",
+      });
+    }
   };
 
   const getAccuracy = (projected: number, actual?: number): number => {
@@ -91,10 +127,20 @@ export const UnifiedCollaborationHistory = ({ refreshKey }: UnifiedCollaboration
     return <Badge variant="destructive">Needs Review</Badge>;
   };
 
-  const insights = UnifiedDataService.getInsights();
-
   return (
     <div className="space-y-6">
+      {isLoading && (
+        <Card>
+          <CardContent className="flex items-center justify-center p-12">
+            <div className="text-center">
+              <div className="mb-4">Loading collaborations from cloud...</div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {!isLoading && insights && (
+        <>
       {/* Insights Overview */}
       <Card>
         <CardHeader>
@@ -350,6 +396,8 @@ export const UnifiedCollaborationHistory = ({ refreshKey }: UnifiedCollaboration
           </form>
         </DialogContent>
       </Dialog>
+      </>
+      )}
     </div>
   );
 };

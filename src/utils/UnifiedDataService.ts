@@ -1,10 +1,12 @@
+import { collaborationsApi, CollaborationApiData } from '../api/collaborationsApi';
+
 export interface CollaborationData {
   id: string;
   creatorName: string;
   averageViews: number;
   lowestViews: number;
   targetCPM: number;
-  
+
   // Prediction data (when calculation is saved)
   projectedViews: number;
   recommendedPrice: number;
@@ -15,37 +17,144 @@ export interface CollaborationData {
     max: number;
   };
   dateCalculated: Date;
-  
+
   // Actual results (when real data is added)
   actualViews?: number;
   actualPrice?: number;
   datePosted?: Date;
   notes?: string;
-  
+
   // Computed fields
   accuracy?: number; // calculated when actualViews is available
 }
 
 export class UnifiedDataService {
   private static STORAGE_KEY = 'collaboration_data_unified';
+  private static USE_API = true; // Toggle to enable/disable API (falls back to localStorage)
 
-  static saveCalculation(data: Omit<CollaborationData, 'id' | 'dateCalculated' | 'accuracy'>): CollaborationData {
-    const collaborations = this.getCollaborations();
-    
+  /**
+   * Save a new collaboration calculation
+   * Saves to both API (primary) and localStorage (backup)
+   */
+  static async saveCalculation(data: Omit<CollaborationData, 'id' | 'dateCalculated' | 'accuracy'>): Promise<CollaborationData> {
     const newCollaboration: CollaborationData = {
       ...data,
-      id: Date.now().toString(),
+      id: Date.now().toString(), // Will be replaced by backend ID
       dateCalculated: new Date(),
     };
 
+    // Try to save to API first
+    if (this.USE_API) {
+      try {
+        // Convert to API format
+        const apiData: CollaborationApiData = {
+          creatorName: data.creatorName,
+          averageViews: data.averageViews,
+          lowestViews: data.lowestViews,
+          targetCPM: data.targetCPM,
+          projectedViews: data.projectedViews,
+          recommendedPrice: data.recommendedPrice,
+          confidence: data.confidence,
+          reasoning: data.reasoning,
+          priceRange: data.priceRange,
+          actualViews: data.actualViews,
+          actualPrice: data.actualPrice,
+          datePosted: data.datePosted?.toISOString(),
+          notes: data.notes,
+        };
+
+        // Save to API
+        const saved = await collaborationsApi.saveCollaboration(apiData);
+
+        // Convert API response back to local format
+        const savedCollaboration: CollaborationData = {
+          id: saved.id || newCollaboration.id,
+          creatorName: saved.creatorName,
+          averageViews: saved.averageViews,
+          lowestViews: saved.lowestViews,
+          targetCPM: saved.targetCPM,
+          projectedViews: saved.projectedViews,
+          recommendedPrice: saved.recommendedPrice,
+          confidence: saved.confidence,
+          reasoning: saved.reasoning,
+          priceRange: saved.priceRange,
+          dateCalculated: saved.dateCalculated ? new Date(saved.dateCalculated) : new Date(),
+          actualViews: saved.actualViews,
+          actualPrice: saved.actualPrice,
+          datePosted: saved.datePosted ? new Date(saved.datePosted) : undefined,
+          notes: saved.notes,
+          accuracy: saved.actualViews ? this.calculateAccuracy(saved.projectedViews, saved.actualViews) : undefined,
+        };
+
+        // Also save to localStorage as backup
+        this.saveToLocalStorage(savedCollaboration);
+
+        return savedCollaboration;
+
+      } catch (error) {
+        console.error('Failed to save to API, falling back to localStorage:', error);
+        // Fall through to localStorage save
+      }
+    }
+
+    // Fallback: Save to localStorage only
+    const collaborations = await this.getCollaborations();
     collaborations.push(newCollaboration);
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(collaborations));
     return newCollaboration;
   }
 
-  static getCollaborations(): CollaborationData[] {
+  /**
+   * Get all collaborations
+   * Loads from API (primary) with localStorage fallback
+   */
+  static async getCollaborations(): Promise<CollaborationData[]> {
+    // Try to get from API first
+    if (this.USE_API) {
+      try {
+        const apiData = await collaborationsApi.getCollaborations();
+
+        // Convert API data to local format
+        const collaborations: CollaborationData[] = apiData.map(item => ({
+          id: item.id || Date.now().toString(),
+          creatorName: item.creatorName,
+          averageViews: item.averageViews,
+          lowestViews: item.lowestViews,
+          targetCPM: item.targetCPM,
+          projectedViews: item.projectedViews,
+          recommendedPrice: item.recommendedPrice,
+          confidence: item.confidence,
+          reasoning: item.reasoning,
+          priceRange: item.priceRange,
+          dateCalculated: item.dateCalculated ? new Date(item.dateCalculated) : new Date(),
+          actualViews: item.actualViews,
+          actualPrice: item.actualPrice,
+          datePosted: item.datePosted ? new Date(item.datePosted) : undefined,
+          notes: item.notes,
+          accuracy: item.actualViews ? this.calculateAccuracy(item.projectedViews, item.actualViews) : undefined,
+        }));
+
+        // Sync to localStorage for backup
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(collaborations));
+
+        return collaborations;
+
+      } catch (error) {
+        console.error('Failed to load from API, falling back to localStorage:', error);
+        // Fall through to localStorage
+      }
+    }
+
+    // Fallback: Get from localStorage
+    return this.getFromLocalStorage();
+  }
+
+  /**
+   * Helper: Get data from localStorage (includes migration from old formats)
+   */
+  private static getFromLocalStorage(): CollaborationData[] {
     const stored = localStorage.getItem(this.STORAGE_KEY);
-    
+
     // Parse existing data
     const existingData: CollaborationData[] = stored ? JSON.parse(stored).map((item: any) => ({
       ...item,
@@ -53,16 +162,34 @@ export class UnifiedDataService {
       datePosted: item.datePosted ? new Date(item.datePosted) : undefined,
       accuracy: item.actualViews ? this.calculateAccuracy(item.projectedViews, item.actualViews) : undefined,
     })) : [];
-    
+
     // Always try to merge old data (will skip duplicates)
     const mergedData = this.mergeOldData(existingData);
-    
+
     // If we merged new data, save it
     if (mergedData.length > existingData.length) {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(mergedData));
     }
-    
+
     return mergedData;
+  }
+
+  /**
+   * Helper: Save single item to localStorage
+   */
+  private static saveToLocalStorage(collaboration: CollaborationData): void {
+    const stored = localStorage.getItem(this.STORAGE_KEY);
+    const existing: CollaborationData[] = stored ? JSON.parse(stored) : [];
+
+    // Check if already exists (update) or new (add)
+    const index = existing.findIndex(c => c.id === collaboration.id);
+    if (index !== -1) {
+      existing[index] = collaboration;
+    } else {
+      existing.push(collaboration);
+    }
+
+    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(existing));
   }
 
   private static mergeOldData(existingData: CollaborationData[]): CollaborationData[] {
@@ -133,31 +260,48 @@ export class UnifiedDataService {
     return merged;
   }
 
-  static updateCollaboration(id: string, updates: Partial<CollaborationData>): void {
-    const collaborations = this.getCollaborations();
+  /**
+   * Update an existing collaboration
+   * Note: API doesn't support updates yet, so this only updates localStorage
+   * TODO: Add update API endpoint in Phase 4
+   */
+  static async updateCollaboration(id: string, updates: Partial<CollaborationData>): Promise<void> {
+    const collaborations = await this.getCollaborations();
     const index = collaborations.findIndex(c => c.id === id);
-    
+
     if (index !== -1) {
       collaborations[index] = { ...collaborations[index], ...updates };
       // Recalculate accuracy if actualViews is being updated
       if (updates.actualViews && collaborations[index].projectedViews) {
         collaborations[index].accuracy = this.calculateAccuracy(
-          collaborations[index].projectedViews, 
+          collaborations[index].projectedViews,
           updates.actualViews
         );
       }
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(collaborations));
+
+      // TODO: Also update on API when backend supports it
+      console.log('Note: Updates are currently localStorage-only. API update endpoint coming in Phase 4.');
     }
   }
 
-  static deleteCollaboration(id: string): void {
-    const collaborations = this.getCollaborations();
+  /**
+   * Delete a collaboration
+   * Note: API doesn't support deletes yet, so this only updates localStorage
+   * TODO: Add delete API endpoint in Phase 4
+   */
+  static async deleteCollaboration(id: string): Promise<void> {
+    const collaborations = await this.getCollaborations();
     const filtered = collaborations.filter(c => c.id !== id);
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(filtered));
+
+    // TODO: Also delete from API when backend supports it
+    console.log('Note: Deletes are currently localStorage-only. API delete endpoint coming in Phase 4.');
   }
 
-  static getCollaborationsByCreator(creatorName: string): CollaborationData[] {
-    return this.getCollaborations().filter(c => 
+  static async getCollaborationsByCreator(creatorName: string): Promise<CollaborationData[]> {
+    const collaborations = await this.getCollaborations();
+    return collaborations.filter(c =>
       c.creatorName.toLowerCase().includes(creatorName.toLowerCase())
     );
   }
@@ -170,12 +314,13 @@ export class UnifiedDataService {
   }
 
   // Enhanced prediction algorithm using unified data
-  static getSmartProjection(averageViews: number, lowestViews: number): {
+  // Note: This runs LOCALLY in the browser for fast predictions
+  static async getSmartProjection(averageViews: number, lowestViews: number): Promise<{
     projectedViews: number;
     confidence: number;
     reasoning: string;
-  } {
-    const collaborations = this.getCollaborations();
+  }> {
+    const collaborations = await this.getCollaborations();
     const completedCollaborations = collaborations.filter(c => c.actualViews !== undefined);
     
     if (completedCollaborations.length < 3) {
@@ -352,7 +497,7 @@ export class UnifiedDataService {
     return Math.min(1.2, Math.max(0.8, trend));
   }
 
-  static getInsights(): {
+  static async getInsights(): Promise<{
     totalCollaborations: number;
     completedCollaborations: number;
     pendingCollaborations: number;
@@ -364,8 +509,8 @@ export class UnifiedDataService {
       collaborations: number;
     }>;
     recommendations: string[];
-  } {
-    const collaborations = this.getCollaborations();
+  }> {
+    const collaborations = await this.getCollaborations();
     const completed = collaborations.filter(c => c.actualViews !== undefined);
     
     if (collaborations.length === 0) {

@@ -34,6 +34,8 @@ export const PricingCalculator = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [creatorName, setCreatorName] = useState("");
+  const [isCalculating, setIsCalculating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
   // Force refresh when historical data updates
@@ -49,37 +51,49 @@ export const PricingCalculator = () => {
     setLowestViews(lowest.toString());
   };
 
-  const calculatePricing = () => {
+  const calculatePricing = async () => {
     const avgViews = parseFloat(averageViews);
     const lowViews = parseFloat(lowestViews);
     const cpm = parseFloat(targetCPM);
 
     if (!avgViews || !lowViews || !cpm) return;
 
-    // Use enhanced algorithm with historical data
-    const smartProjection = UnifiedDataService.getSmartProjection(avgViews, lowViews);
-    
-    // Calculate recommended price based on smart projected views
-    const recommendedPrice = Math.round((smartProjection.projectedViews / 1000) * cpm);
-    
-    // Create a narrower range around the recommended price (±15% for high confidence, ±25% for low)
-    const rangeVariation = smartProjection.confidence > 75 ? 0.15 : 0.25;
-    const minPrice = Math.round(recommendedPrice * (1 - rangeVariation));
-    const maxPrice = Math.round(recommendedPrice * (1 + rangeVariation));
+    setIsCalculating(true);
+    try {
+      // Use enhanced algorithm with historical data (runs locally in browser)
+      const smartProjection = await UnifiedDataService.getSmartProjection(avgViews, lowViews);
 
-    setResults({
-      averageViews: avgViews,
-      lowestViews: lowViews,
-      targetCPM: cpm,
-      projectedViews: smartProjection.projectedViews,
-      confidence: smartProjection.confidence,
-      reasoning: smartProjection.reasoning,
-      recommendedPrice,
-      priceRange: {
-        min: minPrice,
-        max: maxPrice,
-      },
-    });
+      // Calculate recommended price based on smart projected views
+      const recommendedPrice = Math.round((smartProjection.projectedViews / 1000) * cpm);
+
+      // Create a narrower range around the recommended price (±15% for high confidence, ±25% for low)
+      const rangeVariation = smartProjection.confidence > 75 ? 0.15 : 0.25;
+      const minPrice = Math.round(recommendedPrice * (1 - rangeVariation));
+      const maxPrice = Math.round(recommendedPrice * (1 + rangeVariation));
+
+      setResults({
+        averageViews: avgViews,
+        lowestViews: lowViews,
+        targetCPM: cpm,
+        projectedViews: smartProjection.projectedViews,
+        confidence: smartProjection.confidence,
+        reasoning: smartProjection.reasoning,
+        recommendedPrice,
+        priceRange: {
+          min: minPrice,
+          max: maxPrice,
+        },
+      });
+    } catch (error) {
+      console.error('Error calculating pricing:', error);
+      toast({
+        title: "Calculation Error",
+        description: "Failed to calculate pricing. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCalculating(false);
+    }
   };
 
   const clearForm = () => {
@@ -90,7 +104,7 @@ export const PricingCalculator = () => {
     setCreatorName("");
   };
 
-  const handleSaveCalculation = () => {
+  const handleSaveCalculation = async () => {
     if (!results) return;
 
     const name = creatorName.trim();
@@ -103,25 +117,37 @@ export const PricingCalculator = () => {
       return;
     }
 
-    UnifiedDataService.saveCalculation({
-      creatorName: name,
-      averageViews: results.averageViews,
-      lowestViews: results.lowestViews,
-      targetCPM: results.targetCPM,
-      projectedViews: results.projectedViews,
-      recommendedPrice: results.recommendedPrice,
-      confidence: results.confidence,
-      reasoning: results.reasoning,
-      priceRange: results.priceRange,
-    });
+    setIsSaving(true);
+    try {
+      await UnifiedDataService.saveCalculation({
+        creatorName: name,
+        averageViews: results.averageViews,
+        lowestViews: results.lowestViews,
+        targetCPM: results.targetCPM,
+        projectedViews: results.projectedViews,
+        recommendedPrice: results.recommendedPrice,
+        confidence: results.confidence,
+        reasoning: results.reasoning,
+        priceRange: results.priceRange,
+      });
 
-    toast({
-      title: "Calculation Saved",
-      description: `Saved calculation for ${name}`,
-    });
+      toast({
+        title: "Calculation Saved",
+        description: `Saved calculation for ${name} to cloud database`,
+      });
 
-    setIsSaveDialogOpen(false);
-    setRefreshKey(prev => prev + 1);
+      setIsSaveDialogOpen(false);
+      setRefreshKey(prev => prev + 1);
+    } catch (error) {
+      console.error('Error saving calculation:', error);
+      toast({
+        title: "Save Failed",
+        description: "Failed to save to cloud. Saved locally as backup.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -246,18 +272,19 @@ export const PricingCalculator = () => {
                       <Button
                         onClick={calculatePricing}
                         className="flex-1 bg-gradient-primary text-primary-foreground hover:opacity-90"
-                        disabled={!averageViews || !lowestViews || !targetCPM}
+                        disabled={!averageViews || !lowestViews || !targetCPM || isCalculating}
                       >
-                        Calculate Pricing
+                        {isCalculating ? "Calculating..." : "Calculate Pricing"}
                       </Button>
                       {results && creatorName.trim() && (
                         <Button
                           onClick={handleSaveCalculation}
-                          variant="outline" 
+                          variant="outline"
                           className="px-6"
+                          disabled={isSaving}
                         >
                           <Save className="w-4 h-4 mr-2" />
-                          Save
+                          {isSaving ? "Saving..." : "Save"}
                         </Button>
                       )}
                       {results && !creatorName.trim() && (
@@ -290,10 +317,10 @@ export const PricingCalculator = () => {
                                 </div>
                               </div>
                               <div className="flex gap-3 pt-4">
-                                <Button onClick={handleSaveCalculation} className="flex-1">
-                                  Save Calculation
+                                <Button onClick={handleSaveCalculation} className="flex-1" disabled={isSaving}>
+                                  {isSaving ? "Saving..." : "Save Calculation"}
                                 </Button>
-                                <Button variant="outline" onClick={() => setIsSaveDialogOpen(false)}>
+                                <Button variant="outline" onClick={() => setIsSaveDialogOpen(false)} disabled={isSaving}>
                                   Cancel
                                 </Button>
                               </div>
