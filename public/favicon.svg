@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 240" fill="none">
+  <!-- White background -->
+  <rect width="200" height="240" fill="white" />
+
+  <!-- Ukrainian Trident (Tryzub) -->
+  <g stroke="#1e293b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- Center spike -->
+    <path d="M 100 20 L 100 150" />
+
+    <!-- Center ornament -->
+    <ellipse cx="100" cy="165" rx="20" ry="25" />
+    <path d="M 80 165 L 120 165" />
+    <path d="M 90 175 L 110 175" />
+
+    <!-- Bottom point -->
+    <path d="M 100 190 L 100 230 L 95 220 M 100 230 L 105 220" />
+
+    <!-- Left prong outer -->
+    <path d="M 50 50 Q 45 80, 50 110 Q 55 130, 65 145" />
+    <path d="M 50 50 Q 40 50, 35 60 Q 30 80, 35 100 Q 38 115, 45 125" />
+
+    <!-- Left prong inner curve -->
+    <path d="M 65 70 Q 70 90, 75 110 Q 78 125, 80 140" />
+
+    <!-- Right prong outer -->
+    <path d="M 150 50 Q 155 80, 150 110 Q 145 130, 135 145" />
+    <path d="M 150 50 Q 160 50, 165 60 Q 170 80, 165 100 Q 162 115, 155 125" />
+
+    <!-- Right prong inner curve -->
+    <path d="M 135 70 Q 130 90, 125 110 Q 122 125, 120 140" />
+
+    <!-- Left connecting curves -->
+    <path d="M 50 110 Q 65 120, 80 140" />
+
+    <!-- Right connecting curves -->
+    <path d="M 150 110 Q 135 120, 120 140" />
+
+    <!-- Top connection to center -->
+    <path d="M 95 60 Q 80 50, 65 70" />
+    <path d="M 105 60 Q 120 50, 135 70" />
+  </g>
+</svg>

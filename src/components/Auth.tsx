@@ -199,7 +199,7 @@ export const Auth = () => {
     <div className="flex min-h-screen items-center justify-center bg-gradient-subtle p-6">
       <Card className="w-full max-w-md shadow-medium">
         <CardHeader>
-          <CardTitle>Influencer Pricing Calculator</CardTitle>
+          <CardTitle>RateQ</CardTitle>
           <CardDescription>
             Sign in to save and track your collaboration calculations
           </CardDescription>

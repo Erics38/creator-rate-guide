@@ -1,0 +1,31 @@
+[build]
+  # Build command
+  command = "npm run build"
+
+  # Directory with the build output
+  publish = "dist"
+
+# Environment variables (these will also need to be set in Netlify dashboard)
+[build.environment]
+  NODE_VERSION = "18"
+
+# Redirect rules for single-page application
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Headers for security and performance
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=()"
+
+# Cache static assets
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
