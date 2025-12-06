@@ -145,9 +145,8 @@ export class InfrastructureStack extends cdk.Stack {
       description: 'API for influencer collaboration pricing calculator',
       // CORS configuration (allows frontend to call API from different domain)
       defaultCorsPreflightOptions: {
-        // ⚠️ SECURITY: Update this after deploying to Netlify!
-        // Replace '*' with your actual domain: ['https://your-app.netlify.app']
-        allowOrigins: apigateway.Cors.ALL_ORIGINS,  // TODO: Restrict to your domain in production
+        // Restrict to production domain for security
+        allowOrigins: ['https://rateq.netlify.app', 'http://localhost:8080'],  // Production + local dev
         allowMethods: apigateway.Cors.ALL_METHODS,
         allowHeaders: ['Content-Type', 'Authorization'],
       },
