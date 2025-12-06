@@ -62,7 +62,8 @@ export class InfrastructureStack extends cdk.Stack {
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,  // On-demand pricing (free tier friendly)
       removalPolicy: cdk.RemovalPolicy.RETAIN,  // Don't delete table if stack is destroyed
-      pointInTimeRecovery: false,  // Can enable later if needed
+      pointInTimeRecovery: true,  // Enable backup and restore
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,  // Enable encryption at rest (free)
     });
 
     // ==========================================
@@ -144,6 +145,8 @@ export class InfrastructureStack extends cdk.Stack {
       description: 'API for influencer collaboration pricing calculator',
       // CORS configuration (allows frontend to call API from different domain)
       defaultCorsPreflightOptions: {
+        // ⚠️ SECURITY: Update this after deploying to Netlify!
+        // Replace '*' with your actual domain: ['https://your-app.netlify.app']
         allowOrigins: apigateway.Cors.ALL_ORIGINS,  // TODO: Restrict to your domain in production
         allowMethods: apigateway.Cors.ALL_METHODS,
         allowHeaders: ['Content-Type', 'Authorization'],

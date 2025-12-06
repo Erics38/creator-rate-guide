@@ -7,6 +7,7 @@
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { dynamoService } from '../services/dynamoService';
+import { createCollaborationSchema } from '../validation/collaborationSchema';
 
 /**
  * Extract user ID from Cognito JWT token
@@ -22,42 +23,40 @@ function getUserId(event: APIGatewayProxyEvent): string {
  * AWS calls this when API Gateway receives a POST request
  */
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // Log request for debugging (visible in CloudWatch)
-  console.log('Received request:', JSON.stringify(event, null, 2));
+  // Log request for debugging (non-sensitive fields only)
+  console.log('Save collaboration request:', {
+    method: event.httpMethod,
+    path: event.path,
+    userId: event.requestContext.authorizer?.claims?.sub,
+  });
 
   try {
     // Parse request body
-    // API Gateway sends data as JSON string in event.body
     const body = JSON.parse(event.body || '{}');
 
-    // Validate required fields
-    // These come from the frontend after calculation
-    const requiredFields = [
-      'creatorName',
-      'averageViews',
-      'lowestViews',
-      'targetCPM',
-      'projectedViews',
-      'recommendedPrice',
-      'confidence',
-      'reasoning',
-      'priceRange'
-    ];
+    // Validate and sanitize input with Zod
+    const validationResult = createCollaborationSchema.safeParse(body);
 
-    const missingFields = requiredFields.filter(field => !body[field]);
-    if (missingFields.length > 0) {
+    if (!validationResult.success) {
+      console.warn('Validation failed:', validationResult.error.issues);
       return {
         statusCode: 400,
         headers: {
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'  // CORS header (allow frontend to call)
+          'Access-Control-Allow-Origin': '*'
         },
         body: JSON.stringify({
-          error: 'Missing required fields',
-          missing: missingFields
+          error: 'Invalid input data',
+          details: validationResult.error.issues.map((err: any) => ({
+            field: err.path.join('.'),
+            message: err.message
+          }))
         })
       };
     }
+
+    // Use validated data (automatically sanitized by Zod)
+    const validatedBody = validationResult.data;
 
     // Generate unique ID and timestamps
     const id = Date.now().toString();
@@ -77,43 +76,42 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
                       : '500K+';
 
     // Build DynamoDB item
-    // PK/SK structure allows efficient queries by user
     const userId = getUserId(event);
     const item = {
       // DynamoDB keys
-      PK: `userId#${userId}`,  // Real user ID from Cognito JWT
-      SK: `COLLAB#${now}#${id}`,  // Sortable by date, unique by ID
+      PK: `userId#${userId}`,
+      SK: `COLLAB#${now}#${id}`,
 
       // Core identification
       id,
-      creatorName: body.creatorName,
+      creatorName: validatedBody.creatorName,
 
-      // Input parameters (what user entered)
-      averageViews: body.averageViews,
-      lowestViews: body.lowestViews,
-      targetCPM: body.targetCPM,
+      // Input parameters (validated)
+      averageViews: validatedBody.averageViews,
+      lowestViews: validatedBody.lowestViews,
+      targetCPM: validatedBody.targetCPM,
 
-      // Prediction results (from ML algorithm)
-      projectedViews: body.projectedViews,
-      recommendedPrice: body.recommendedPrice,
-      confidence: body.confidence,
-      reasoning: body.reasoning,
-      priceRangeMin: body.priceRange.min,
-      priceRangeMax: body.priceRange.max,
+      // Prediction results (validated)
+      projectedViews: validatedBody.projectedViews,
+      recommendedPrice: validatedBody.recommendedPrice,
+      confidence: validatedBody.confidence,
+      reasoning: validatedBody.reasoning,
+      priceRangeMin: validatedBody.priceRange.min,
+      priceRangeMax: validatedBody.priceRange.max,
       dateCalculated: now,
 
       // Computed fields for queries
       creatorCategory,
       viewsRange,
-      creatorNameLower: body.creatorName.toLowerCase(),
-      hasActualData: false,  // No actual results yet
+      creatorNameLower: validatedBody.creatorName.toLowerCase(),
+      hasActualData: false,
 
       // Optional fields (if provided)
-      ...(body.actualViews && { actualViews: body.actualViews }),
-      ...(body.actualPrice && { actualPrice: body.actualPrice }),
-      ...(body.datePosted && { datePosted: body.datePosted }),
-      ...(body.notes && { notes: body.notes }),
-      ...(body.accuracy && { accuracy: body.accuracy })
+      ...(validatedBody.actualViews && { actualViews: validatedBody.actualViews }),
+      ...(validatedBody.actualPrice && { actualPrice: validatedBody.actualPrice }),
+      ...(validatedBody.datePosted && { datePosted: validatedBody.datePosted }),
+      ...(validatedBody.notes && { notes: validatedBody.notes }),
+      ...(validatedBody.accuracy && { accuracy: validatedBody.accuracy })
     };
 
     // Save to DynamoDB
@@ -133,10 +131,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     };
 
   } catch (error) {
-    // Log error for debugging
+    // Log detailed error for debugging (CloudWatch only)
     console.error('Error saving collaboration:', error);
 
-    // Return error response
+    // Return sanitized error (no technical details exposed to client)
     return {
       statusCode: 500,
       headers: {
@@ -144,8 +142,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         'Access-Control-Allow-Origin': '*'
       },
       body: JSON.stringify({
-        error: 'Internal server error',
-        message: error instanceof Error ? error.message : 'Unknown error'
+        error: 'An error occurred while saving the collaboration. Please try again.'
       })
     };
   }
