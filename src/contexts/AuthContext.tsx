@@ -6,7 +6,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { signIn, signUp, signOut, getCurrentUser, fetchAuthSession, confirmSignUp, resendSignUpCode } from 'aws-amplify/auth';
+import { signIn, signUp, signOut, getCurrentUser, fetchAuthSession, confirmSignUp, resendSignUpCode, resetPassword, confirmResetPassword } from 'aws-amplify/auth';
 
 interface User {
   username: string;
@@ -22,6 +22,8 @@ interface AuthContextType {
   signup: (email: string, password: string) => Promise<{ isSignUpComplete: boolean; nextStep: any }>;
   confirmSignup: (email: string, code: string) => Promise<void>;
   resendConfirmationCode: (email: string) => Promise<void>;
+  forgotPassword: (email: string) => Promise<void>;
+  resetPasswordWithCode: (email: string, code: string, newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
   getAccessToken: () => Promise<string | undefined>;
   clearError: () => void;
@@ -167,6 +169,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const forgotPassword = async (email: string) => {
+    try {
+      setError(null);
+      await resetPassword({ username: email });
+    } catch (err: any) {
+      console.error('Forgot password error:', err);
+      setError(err.message || 'Failed to initiate password reset');
+      throw err;
+    }
+  };
+
+  const resetPasswordWithCode = async (email: string, code: string, newPassword: string) => {
+    try {
+      setError(null);
+      setLoading(true);
+
+      await confirmResetPassword({
+        username: email,
+        confirmationCode: code,
+        newPassword,
+      });
+    } catch (err: any) {
+      console.error('Reset password error:', err);
+      setError(err.message || 'Failed to reset password');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const clearError = () => setError(null);
 
   return (
@@ -179,6 +211,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signup,
         confirmSignup,
         resendConfirmationCode,
+        forgotPassword,
+        resetPasswordWithCode,
         logout,
         getAccessToken,
         clearError,

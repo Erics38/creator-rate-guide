@@ -1,0 +1,4 @@
+VITE_API_URL=https://k0oldo3mk1.execute-api.us-east-1.amazonaws.com/prod
+VITE_AWS_REGION=us-east-1
+VITE_USER_POOL_ID=us-east-1_FFRYk7D24
+VITE_USER_POOL_CLIENT_ID=7j6f0h3cmi4imtv9p9h9c7p73q

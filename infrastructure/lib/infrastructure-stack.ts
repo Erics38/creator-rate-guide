@@ -3,6 +3,9 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as cloudwatchActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import { Construct } from 'constructs';
 import * as path from 'path';
 
@@ -150,6 +153,11 @@ export class InfrastructureStack extends cdk.Stack {
         allowMethods: apigateway.Cors.ALL_METHODS,
         allowHeaders: ['Content-Type', 'Authorization'],
       },
+      // Rate limiting to prevent abuse
+      deployOptions: {
+        throttlingRateLimit: 100,  // Requests per second
+        throttlingBurstLimit: 200,  // Burst capacity
+      },
     });
 
     // Cognito Authorizer for API Gateway
@@ -189,6 +197,127 @@ export class InfrastructureStack extends cdk.Stack {
       authorizer,
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
+
+    // ==========================================
+    // MONITORING & ALARMS
+    // ==========================================
+
+    // SNS Topic for alarm notifications
+    const alarmTopic = new sns.Topic(this, 'AlarmTopic', {
+      displayName: 'RateQ Alarm Notifications',
+      topicName: 'RateQAlarms',
+    });
+
+    // Lambda Error Alarms (one for each function)
+    const lambdaFunctions = [
+      { name: 'SaveCollaboration', fn: saveCollaborationFn },
+      { name: 'GetCollaborations', fn: getCollaborationsFn },
+      { name: 'UpdateCollaboration', fn: updateCollaborationFn },
+      { name: 'DeleteCollaboration', fn: deleteCollaborationFn },
+    ];
+
+    lambdaFunctions.forEach(({ name, fn }) => {
+      // Alarm for function errors
+      const errorAlarm = new cloudwatch.Alarm(this, `${name}ErrorAlarm`, {
+        alarmName: `RateQ-${name}-Errors`,
+        metric: fn.metricErrors({
+          period: cdk.Duration.minutes(5),
+        }),
+        threshold: 5,  // Alert if 5+ errors in 5 minutes
+        evaluationPeriods: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        alarmDescription: `${name} function is experiencing errors`,
+      });
+      errorAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alarmTopic));
+
+      // Alarm for function throttling
+      const throttleAlarm = new cloudwatch.Alarm(this, `${name}ThrottleAlarm`, {
+        alarmName: `RateQ-${name}-Throttled`,
+        metric: fn.metricThrottles({
+          period: cdk.Duration.minutes(5),
+        }),
+        threshold: 10,  // Alert if 10+ throttles in 5 minutes
+        evaluationPeriods: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        alarmDescription: `${name} function is being throttled`,
+      });
+      throttleAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alarmTopic));
+    });
+
+    // API Gateway 4xx Error Alarm (client errors)
+    const api4xxAlarm = new cloudwatch.Alarm(this, 'Api4xxErrorAlarm', {
+      alarmName: 'RateQ-API-4xx-Errors',
+      metric: new cloudwatch.Metric({
+        namespace: 'AWS/ApiGateway',
+        metricName: '4XXError',
+        dimensionsMap: {
+          ApiName: api.restApiName,
+        },
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(5),
+      }),
+      threshold: 50,  // Alert if 50+ 4xx errors in 5 minutes
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      alarmDescription: 'API is receiving many client errors (4xx)',
+    });
+    api4xxAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alarmTopic));
+
+    // API Gateway 5xx Error Alarm (server errors)
+    const api5xxAlarm = new cloudwatch.Alarm(this, 'Api5xxErrorAlarm', {
+      alarmName: 'RateQ-API-5xx-Errors',
+      metric: new cloudwatch.Metric({
+        namespace: 'AWS/ApiGateway',
+        metricName: '5XXError',
+        dimensionsMap: {
+          ApiName: api.restApiName,
+        },
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(5),
+      }),
+      threshold: 10,  // Alert if 10+ 5xx errors in 5 minutes
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      alarmDescription: 'API is experiencing server errors (5xx)',
+    });
+    api5xxAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alarmTopic));
+
+    // DynamoDB Read/Write Throttle Alarms
+    const dynamoReadThrottleAlarm = new cloudwatch.Alarm(this, 'DynamoReadThrottleAlarm', {
+      alarmName: 'RateQ-DynamoDB-ReadThrottle',
+      metric: new cloudwatch.Metric({
+        namespace: 'AWS/DynamoDB',
+        metricName: 'ReadThrottleEvents',
+        dimensionsMap: {
+          TableName: collaborationsTable.tableName,
+        },
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(5),
+      }),
+      threshold: 1,  // Alert on any throttling
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      alarmDescription: 'DynamoDB table read operations are being throttled',
+    });
+    dynamoReadThrottleAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alarmTopic));
+
+    const dynamoWriteThrottleAlarm = new cloudwatch.Alarm(this, 'DynamoWriteThrottleAlarm', {
+      alarmName: 'RateQ-DynamoDB-WriteThrottle',
+      metric: new cloudwatch.Metric({
+        namespace: 'AWS/DynamoDB',
+        metricName: 'WriteThrottleEvents',
+        dimensionsMap: {
+          TableName: collaborationsTable.tableName,
+        },
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(5),
+      }),
+      threshold: 1,  // Alert on any throttling
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      alarmDescription: 'DynamoDB table write operations are being throttled',
+    });
+    dynamoWriteThrottleAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alarmTopic));
 
     // ==========================================
     // OUTPUTS
@@ -250,6 +379,13 @@ export class InfrastructureStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'DeleteCollaborationFunctionName', {
       value: deleteCollaborationFn.functionName,
       description: 'Delete Collaboration Lambda function name',
+    });
+
+    // Output SNS Topic ARN for alarm notifications
+    new cdk.CfnOutput(this, 'AlarmTopicArn', {
+      value: alarmTopic.topicArn,
+      description: 'SNS Topic ARN for alarm notifications - subscribe your email here',
+      exportName: 'RateQAlarmTopicArn',
     });
   }
 }

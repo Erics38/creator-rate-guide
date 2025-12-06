@@ -13,18 +13,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { LogIn, UserPlus, Mail, Eye, EyeOff } from 'lucide-react';
+import { LogIn, UserPlus, Mail, Eye, EyeOff, KeyRound } from 'lucide-react';
 
 export const Auth = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [confirmationCode, setConfirmationCode] = useState('');
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
   const [pendingEmail, setPendingEmail] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showVerifyTab, setShowVerifyTab] = useState(false);
 
-  const { login, signup, confirmSignup, resendConfirmationCode, loading } = useAuth();
+  const { login, signup, confirmSignup, resendConfirmationCode, forgotPassword, resetPasswordWithCode, loading } = useAuth();
   const { toast } = useToast();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -130,6 +132,132 @@ export const Auth = () => {
     }
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await forgotPassword(email);
+      setPendingEmail(email);
+      setShowPasswordReset(true);
+      toast({
+        title: 'Reset Code Sent',
+        description: `A password reset code has been sent to ${email}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Failed to Send Reset Code',
+        description: error.message || 'Failed to initiate password reset',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await resetPasswordWithCode(pendingEmail, confirmationCode, newPassword);
+      toast({
+        title: 'Password Reset Successful',
+        description: 'You can now log in with your new password',
+      });
+      setShowPasswordReset(false);
+      setConfirmationCode('');
+      setNewPassword('');
+      setPendingEmail('');
+    } catch (error: any) {
+      toast({
+        title: 'Reset Failed',
+        description: error.message || 'Failed to reset password',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  if (showPasswordReset) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-subtle p-6">
+        <Card className="w-full max-w-md shadow-medium">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-primary" />
+              Reset Password
+            </CardTitle>
+            <CardDescription>
+              We sent a reset code to <strong>{pendingEmail}</strong>
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reset-code" className="text-base font-semibold">Reset Code</Label>
+                <Input
+                  id="reset-code"
+                  type="text"
+                  placeholder="Enter 6-digit code"
+                  value={confirmationCode}
+                  onChange={(e) => setConfirmationCode(e.target.value)}
+                  required
+                  maxLength={6}
+                  className="text-center text-lg tracking-widest font-mono"
+                  autoFocus
+                />
+                <p className="text-xs text-muted-foreground">
+                  Check your email for the 6-digit reset code
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="new-password">New Password</Label>
+                <div className="relative">
+                  <Input
+                    id="new-password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    minLength={8}
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Minimum 8 characters, including uppercase, lowercase, and numbers
+                </p>
+              </div>
+
+              <Button type="submit" className="w-full" disabled={loading || confirmationCode.length !== 6 || newPassword.length < 8}>
+                {loading ? 'Resetting...' : 'Reset Password'}
+              </Button>
+
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={() => {
+                  setShowPasswordReset(false);
+                  setConfirmationCode('');
+                  setNewPassword('');
+                }}
+              >
+                Back to Login
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (showConfirmation) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-subtle p-6">
@@ -206,17 +334,21 @@ export const Auth = () => {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="login" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="login" className="flex items-center gap-2">
-                <LogIn className="h-4 w-4" />
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="login" className="flex items-center gap-1 text-xs">
+                <LogIn className="h-3 w-3" />
                 Login
               </TabsTrigger>
-              <TabsTrigger value="signup" className="flex items-center gap-2">
-                <UserPlus className="h-4 w-4" />
+              <TabsTrigger value="signup" className="flex items-center gap-1 text-xs">
+                <UserPlus className="h-3 w-3" />
                 Sign Up
               </TabsTrigger>
-              <TabsTrigger value="verify" className="flex items-center gap-2">
-                <Mail className="h-4 w-4" />
+              <TabsTrigger value="reset" className="flex items-center gap-1 text-xs">
+                <KeyRound className="h-3 w-3" />
+                Reset
+              </TabsTrigger>
+              <TabsTrigger value="verify" className="flex items-center gap-1 text-xs">
+                <Mail className="h-3 w-3" />
                 Verify
               </TabsTrigger>
             </TabsList>
@@ -313,6 +445,29 @@ export const Auth = () => {
 
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? 'Creating account...' : 'Sign Up'}
+                </Button>
+              </form>
+            </TabsContent>
+
+            <TabsContent value="reset">
+              <form onSubmit={handleForgotPassword} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="reset-email">Email</Label>
+                  <Input
+                    id="reset-email"
+                    type="email"
+                    placeholder="your@email.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Enter your email address to receive a password reset code
+                  </p>
+                </div>
+
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? 'Sending...' : 'Send Reset Code'}
                 </Button>
               </form>
             </TabsContent>
