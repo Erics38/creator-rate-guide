@@ -262,10 +262,46 @@ export class UnifiedDataService {
 
   /**
    * Update an existing collaboration
-   * Note: API doesn't support updates yet, so this only updates localStorage
-   * TODO: Add update API endpoint in Phase 4
+   * Updates both API (primary) and localStorage (backup)
    */
   static async updateCollaboration(id: string, updates: Partial<CollaborationData>): Promise<void> {
+    // Try to update via API first
+    if (this.USE_API) {
+      try {
+        // Convert updates to API format
+        const apiUpdates: Partial<CollaborationApiData> = {
+          actualViews: updates.actualViews,
+          actualPrice: updates.actualPrice,
+          datePosted: updates.datePosted?.toISOString(),
+          notes: updates.notes,
+        };
+
+        await collaborationsApi.updateCollaboration(id, apiUpdates);
+
+        // Also update localStorage
+        const collaborations = await this.getCollaborations();
+        const index = collaborations.findIndex(c => c.id === id);
+
+        if (index !== -1) {
+          collaborations[index] = { ...collaborations[index], ...updates };
+          // Recalculate accuracy if actualViews is being updated
+          if (updates.actualViews && collaborations[index].projectedViews) {
+            collaborations[index].accuracy = this.calculateAccuracy(
+              collaborations[index].projectedViews,
+              updates.actualViews
+            );
+          }
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(collaborations));
+        }
+
+        return;
+      } catch (error) {
+        console.error('Failed to update via API, falling back to localStorage:', error);
+        // Fall through to localStorage update
+      }
+    }
+
+    // Fallback: Update localStorage only
     const collaborations = await this.getCollaborations();
     const index = collaborations.findIndex(c => c.id === id);
 
@@ -279,24 +315,35 @@ export class UnifiedDataService {
         );
       }
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(collaborations));
-
-      // TODO: Also update on API when backend supports it
-      console.log('Note: Updates are currently localStorage-only. API update endpoint coming in Phase 4.');
     }
   }
 
   /**
    * Delete a collaboration
-   * Note: API doesn't support deletes yet, so this only updates localStorage
-   * TODO: Add delete API endpoint in Phase 4
+   * Deletes from both API (primary) and localStorage (backup)
    */
   static async deleteCollaboration(id: string): Promise<void> {
+    // Try to delete via API first
+    if (this.USE_API) {
+      try {
+        await collaborationsApi.deleteCollaboration(id);
+
+        // Also delete from localStorage
+        const collaborations = await this.getCollaborations();
+        const filtered = collaborations.filter(c => c.id !== id);
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(filtered));
+
+        return;
+      } catch (error) {
+        console.error('Failed to delete via API, falling back to localStorage:', error);
+        // Fall through to localStorage delete
+      }
+    }
+
+    // Fallback: Delete from localStorage only
     const collaborations = await this.getCollaborations();
     const filtered = collaborations.filter(c => c.id !== id);
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(filtered));
-
-    // TODO: Also delete from API when backend supports it
-    console.log('Note: Deletes are currently localStorage-only. API delete endpoint coming in Phase 4.');
   }
 
   static async getCollaborationsByCreator(creatorName: string): Promise<CollaborationData[]> {

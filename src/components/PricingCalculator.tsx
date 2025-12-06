@@ -5,12 +5,13 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Calculator, TrendingUp, DollarSign, Eye, Brain, History, Save, User } from "lucide-react";
+import { Calculator, TrendingUp, DollarSign, Eye, Brain, History, Save, User, LogOut } from "lucide-react";
 import { PricingResults } from "./PricingResults";
 import { ProfileScraper } from "./ProfileScraper";
 import { UnifiedDataService } from "@/utils/UnifiedDataService";
 import { UnifiedCollaborationHistory } from "@/components/UnifiedCollaborationHistory";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface PricingData {
   averageViews: number;
@@ -37,6 +38,23 @@ export const PricingCalculator = () => {
   const [isCalculating, setIsCalculating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
+  const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      toast({
+        title: "Logged Out",
+        description: "You have been successfully logged out.",
+      });
+    } catch (error) {
+      toast({
+        title: "Logout Failed",
+        description: "An error occurred while logging out.",
+        variant: "destructive",
+      });
+    }
+  };
 
   // Force refresh when historical data updates
   const handleDataUpdate = () => {
@@ -154,18 +172,31 @@ export const PricingCalculator = () => {
     <div className="min-h-screen bg-gradient-subtle p-6">
       <div className="mx-auto max-w-7xl">
         {/* Header */}
-        <div className="mb-8 text-center">
-          <div className="mb-4 flex items-center justify-center">
-            <div className="rounded-full bg-gradient-primary p-3">
-              <Calculator className="h-8 w-8 text-primary-foreground" />
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-full bg-gradient-primary p-3">
+                <Calculator className="h-8 w-8 text-primary-foreground" />
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="text-sm text-muted-foreground">
+                {user?.email || user?.username}
+              </div>
+              <Button variant="outline" size="sm" onClick={handleLogout}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
+              </Button>
             </div>
           </div>
-          <h1 className="mb-2 text-4xl font-bold text-foreground">
-            Influencer Pricing Calculator
-          </h1>
-          <p className="text-lg text-muted-foreground">
-            Smart pricing with auto-scraping and historical data learning
-          </p>
+          <div className="text-center">
+            <h1 className="mb-2 text-4xl font-bold text-foreground">
+              Influencer Pricing Calculator
+            </h1>
+            <p className="text-lg text-muted-foreground">
+              Smart pricing with auto-scraping and historical data learning
+            </p>
+          </div>
         </div>
 
         <Tabs defaultValue="calculator" className="space-y-6">

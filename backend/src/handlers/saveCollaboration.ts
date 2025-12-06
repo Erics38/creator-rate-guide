@@ -9,6 +9,15 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { dynamoService } from '../services/dynamoService';
 
 /**
+ * Extract user ID from Cognito JWT token
+ * API Gateway adds this to event.requestContext.authorizer.claims
+ */
+function getUserId(event: APIGatewayProxyEvent): string {
+  const claims = event.requestContext.authorizer?.claims;
+  return claims?.sub || 'global';  // Fallback to 'global' if no auth (for backwards compatibility)
+}
+
+/**
  * Main Lambda handler function
  * AWS calls this when API Gateway receives a POST request
  */
@@ -69,9 +78,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     // Build DynamoDB item
     // PK/SK structure allows efficient queries by user
+    const userId = getUserId(event);
     const item = {
       // DynamoDB keys
-      PK: 'userId#global',  // Later: use real user IDs from authentication
+      PK: `userId#${userId}`,  // Real user ID from Cognito JWT
       SK: `COLLAB#${now}#${id}`,  // Sortable by date, unique by ID
 
       // Core identification
