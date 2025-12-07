@@ -137,6 +137,17 @@ export class InfrastructureStack extends cdk.Stack {
     // Grant Lambda permission to read and write to DynamoDB
     collaborationsTable.grantReadWriteData(deleteCollaborationFn);
 
+    // Lambda: Extract YouTube Data
+    // Triggered by: POST /extract/youtube
+    // No Cognito auth required - uses user's own YouTube API key
+    const extractYouTubeFn = new lambda.Function(this, 'ExtractYouTubeFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      handler: 'extractYouTubeData.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/dist/handlers')),
+      timeout: cdk.Duration.seconds(15),  // YouTube API calls may take longer
+      memorySize: 512,
+    });
+
     // ==========================================
     // API GATEWAY
     // ==========================================
@@ -198,6 +209,15 @@ export class InfrastructureStack extends cdk.Stack {
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
 
+    // Create /extract endpoint for data extraction services
+    const extract = api.root.addResource('extract');
+
+    // Create /extract/youtube endpoint
+    const extractYoutube = extract.addResource('youtube');
+
+    // POST /extract/youtube → extractYouTubeFn (NO auth - uses user's API key)
+    extractYoutube.addMethod('POST', new apigateway.LambdaIntegration(extractYouTubeFn));
+
     // ==========================================
     // MONITORING & ALARMS
     // ==========================================
@@ -214,6 +234,7 @@ export class InfrastructureStack extends cdk.Stack {
       { name: 'GetCollaborations', fn: getCollaborationsFn },
       { name: 'UpdateCollaboration', fn: updateCollaborationFn },
       { name: 'DeleteCollaboration', fn: deleteCollaborationFn },
+      { name: 'ExtractYouTube', fn: extractYouTubeFn },
     ];
 
     lambdaFunctions.forEach(({ name, fn }) => {
@@ -379,6 +400,11 @@ export class InfrastructureStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'DeleteCollaborationFunctionName', {
       value: deleteCollaborationFn.functionName,
       description: 'Delete Collaboration Lambda function name',
+    });
+
+    new cdk.CfnOutput(this, 'ExtractYouTubeFunctionName', {
+      value: extractYouTubeFn.functionName,
+      description: 'YouTube Data Extraction Lambda function name',
     });
 
     // Output SNS Topic ARN for alarm notifications
