@@ -6,7 +6,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { signIn, signUp, signOut, getCurrentUser, fetchAuthSession, confirmSignUp, resendSignUpCode, resetPassword, confirmResetPassword } from 'aws-amplify/auth';
+import { signIn, signUp, signOut, getCurrentUser, fetchAuthSession, confirmSignUp, resendSignUpCode, resetPassword, confirmResetPassword, fetchUserAttributes } from 'aws-amplify/auth';
 
 interface User {
   username: string;
@@ -52,9 +52,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const checkUser = async () => {
     try {
       const currentUser = await getCurrentUser();
+      const userAttributes = await fetchUserAttributes();
       setUser({
         username: currentUser.username,
         userId: currentUser.userId,
+        email: userAttributes.email,
       });
     } catch (err) {
       // User not logged in
