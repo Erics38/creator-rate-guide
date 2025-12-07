@@ -6,6 +6,10 @@ import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as cloudwatchActions from 'aws-cdk-lib/aws-cloudwatch-actions';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as cloudfrontOrigins from 'aws-cdk-lib/aws-cloudfront-origins';
+import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import { Construct } from 'constructs';
 import * as path from 'path';
 
@@ -67,6 +71,69 @@ export class InfrastructureStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,  // Don't delete table if stack is destroyed
       pointInTimeRecovery: true,  // Enable backup and restore
       encryption: dynamodb.TableEncryption.AWS_MANAGED,  // Enable encryption at rest (free)
+    });
+
+    // ==========================================
+    // S3 + CLOUDFRONT HOSTING
+    // ==========================================
+
+    // S3 Bucket for hosting static website
+    const websiteBucket = new s3.Bucket(this, 'WebsiteBucket', {
+      bucketName: `rateq-website-${this.account}`,
+      websiteIndexDocument: 'index.html',
+      websiteErrorDocument: 'index.html', // SPA fallback
+      publicReadAccess: false, // CloudFront will access it
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      removalPolicy: cdk.RemovalPolicy.RETAIN, // Keep bucket if stack deleted
+      autoDeleteObjects: false,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+    });
+
+    // CloudFront Origin Access Identity (allows CloudFront to access private S3 bucket)
+    const originAccessIdentity = new cloudfront.OriginAccessIdentity(this, 'WebsiteOAI', {
+      comment: 'Access identity for RateQ website bucket',
+    });
+
+    // Grant CloudFront read access to S3 bucket
+    websiteBucket.grantRead(originAccessIdentity);
+
+    // CloudFront Distribution (CDN)
+    const distribution = new cloudfront.Distribution(this, 'WebsiteDistribution', {
+      defaultBehavior: {
+        origin: new cloudfrontOrigins.S3Origin(websiteBucket, {
+          originAccessIdentity,
+        }),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+        cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD,
+        compress: true,
+        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+      },
+      defaultRootObject: 'index.html',
+      errorResponses: [
+        {
+          httpStatus: 404,
+          responseHttpStatus: 200,
+          responsePagePath: '/index.html',
+          ttl: cdk.Duration.minutes(5),
+        },
+        {
+          httpStatus: 403,
+          responseHttpStatus: 200,
+          responsePagePath: '/index.html',
+          ttl: cdk.Duration.minutes(5),
+        },
+      ],
+      priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
+      enableLogging: false,
+    });
+
+    // Deploy website files to S3
+    new s3deploy.BucketDeployment(this, 'DeployWebsite', {
+      sources: [s3deploy.Source.asset(path.join(__dirname, '../../dist'))],
+      destinationBucket: websiteBucket,
+      distribution, // Invalidate CloudFront cache on deploy
+      distributionPaths: ['/*'],
     });
 
     // ==========================================
@@ -412,6 +479,17 @@ export class InfrastructureStack extends cdk.Stack {
       value: alarmTopic.topicArn,
       description: 'SNS Topic ARN for alarm notifications - subscribe your email here',
       exportName: 'RateQAlarmTopicArn',
+    });
+
+    // Output CloudFront URL for website access
+    new cdk.CfnOutput(this, 'WebsiteURL', {
+      value: `https://${distribution.distributionDomainName}`,
+      description: 'CloudFront URL for RateQ website',
+    });
+
+    new cdk.CfnOutput(this, 'S3BucketName', {
+      value: websiteBucket.bucketName,
+      description: 'S3 bucket name for website hosting',
     });
   }
 }
