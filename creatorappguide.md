@@ -1940,7 +1940,7 @@ Set up alarms for:
 
 **Q: "Walk me through the architecture - how do the pieces fit together?"**
 
-A: "We're using a serverless architecture on AWS:
+A: We're using a serverless architecture on AWS:
 1. React frontend makes REST API calls to API Gateway
 2. API Gateway triggers Lambda functions (TypeScript)
 3. Lambdas interact with DynamoDB (NoSQL database)
@@ -1948,24 +1948,24 @@ A: "We're using a serverless architecture on AWS:
 
 The flow is: User enters data → Frontend calls `/predictions/calculate` → Lambda queries historical data from DynamoDB → ML algorithm runs → Returns prediction → User saves → Another Lambda writes to DynamoDB
 
-Everything is serverless, so we only pay for what we use. At our current scale (1 user, 30 records/month), we'll stay in the free tier."
+Everything is serverless, so we only pay for what we use. At our current scale (1 user, 30 records/month), we'll stay in the free tier.
 
 ---
 
 **Q: "Why DynamoDB over RDS/PostgreSQL?"**
 
-A: "Three reasons:
+A: Three reasons:
 1. **Flexible schema** - Our data model is still evolving. DynamoDB lets us add fields without migrations.
 2. **Serverless** - True pay-per-request pricing. RDS has a minimum $15/month cost even with Aurora Serverless.
 3. **Scalability** - When we hit thousands of users, DynamoDB scales automatically without tuning.
 
-The trade-off is we lose SQL joins and complex queries, but our access patterns are simple (get by user, query by category, search by name). DynamoDB's GSIs handle all our use cases."
+The trade-off is we lose SQL joins and complex queries, but our access patterns are simple (get by user, query by category, search by name). DynamoDB's GSIs handle all our use cases.
 
 ---
 
 **Q: "What are your access patterns? How did you design the table?"**
 
-A: "We have 5 main access patterns:
+A: We have 5 main access patterns:
 1. Get all collaborations for a user (sorted by date)
 2. Find similar creators by category + view range (for ML)
 3. Get completed collaborations with actual results
@@ -1977,7 +1977,7 @@ I designed the primary table with PK=userId, SK=timestamp. Then added 3 GSIs:
 - **CompletedCollabsIndex**: Filter to only completed collabs, sorted by date
 - **CreatorNameIndex**: Search by creator name
 
-This gives us efficient queries without table scans."
+This gives us efficient queries without table scans.
 
 ---
 
@@ -1985,7 +1985,7 @@ This gives us efficient queries without table scans."
 
 **Q: "What happens when you get 10,000 users? What breaks first?"**
 
-A: "Great question. Let me break down the bottlenecks:
+A: Let me break down the bottlenecks:
 
 **What scales automatically**:
 - DynamoDB (on-demand mode handles any read/write load)
@@ -1997,23 +1997,23 @@ A: "Great question. Let me break down the bottlenecks:
 2. **DynamoDB costs** - At 10K users doing 30 calcs/month = 300K writes/month = $375/month. Solution: Switch to provisioned capacity (cheaper at predictable load).
 3. **API Gateway costs** - $3.50 per million requests. At scale, switch to HTTP API (70% cheaper).
 
-**First to optimize**: I'd add CloudFront CDN for frontend ($1/month) and implement API response caching."
+**First to optimize**: I'd add CloudFront CDN for frontend ($1/month) and implement API response caching.
 
 ---
 
 **Q: "How are you handling concurrent writes to DynamoDB?"**
 
-A: "DynamoDB handles concurrency natively with its distributed architecture. Each write gets a unique partition key (userId + timestamp + unique ID), so there are no write conflicts.
+A: DynamoDB handles concurrency natively with its distributed architecture. Each write gets a unique partition key (userId + timestamp + unique ID), so there are no write conflicts.
 
 For updates (like adding actual results to a prediction), we use conditional updates with the full item key (PK + SK). If two users somehow try to update the same item, DynamoDB handles it with optimistic locking.
 
-The only concurrency concern is read-after-write consistency, but since all our writes go to the same partition key, DynamoDB guarantees immediate consistency."
+The only concurrency concern is read-after-write consistency, but since all our writes go to the same partition key, DynamoDB guarantees immediate consistency.
 
 ---
 
 **Q: "What's your read/write capacity planning?"**
 
-A: "We're starting with **on-demand pricing** because:
+A: We're starting with **on-demand pricing** because:
 1. Unpredictable load at this stage
 2. Very low volume (30 writes, 300 reads/month)
 3. No upfront capacity planning needed
@@ -2051,7 +2051,7 @@ Even if we 10x this for overhead, we're at $2/user/year. If we charge $10/month 
 
 **Q: "How does cost scale with usage?"**
 
-A: "Almost perfectly linear until we hit AWS free tier limits:
+A:Almost perfectly linear until we hit AWS free tier limits:
 - Free tier covers first 1M API requests/month
 - First 25GB DynamoDB storage is free
 - First 1M Lambda requests/month are free
@@ -2070,7 +2070,7 @@ Compare to running an EC2 server: $30/month minimum even with zero users."
 
 **Q: "How are you securing the API endpoints?"**
 
-A: "**Phase 1 (now - no auth)**:
+A:**Phase 1 (now - no auth)**:
 - Rate limiting: 1,000 requests/hour per IP (prevents abuse)
 - CORS: Only allow our frontend domain (no cross-origin attacks)
 - Request validation: JSON schema validation on all inputs
@@ -2094,7 +2094,7 @@ We're OK without auth initially because:
 
 **Q: "Where are you storing social media API keys?"**
 
-A: "**Phase 2** (when we add scraping):
+A:**Phase 2** (when we add scraping):
 - API keys stored in **AWS Secrets Manager** ($0.40/month per secret)
 - Lambda functions retrieve keys at runtime
 - Never hardcode in code or environment variables
@@ -2115,7 +2115,7 @@ For Instagram/TikTok/YouTube:
 
 **Q: "What's your data privacy/GDPR strategy?"**
 
-A: "**Phase 1**:
+A:**Phase 1**:
 - No PII collected (just creator names + public metrics)
 - Data is public information (anyone can see view counts)
 - No EU users yet, so GDPR doesn't apply
@@ -2140,7 +2140,7 @@ A: "**Phase 1**:
 
 **Q: "Show me your DynamoDB table design"**
 
-A: "Primary table: `InfluencerCollaborations`
+A:Primary table: `InfluencerCollaborations`
 
 **Keys**:
 - PK (partition key): `userId#global` (later `userId#<actualUserId>`)
@@ -2168,7 +2168,7 @@ This supports all our query patterns without table scans."
 
 **Q: "How does the ML algorithm access historical data efficiently?"**
 
-A: "The ML algorithm needs to find 'similar creators' (±20% view variance) for weighted predictions.
+A:The ML algorithm needs to find 'similar creators' (±20% view variance) for weighted predictions.
 
 **Naive approach** (BAD):
 - Scan entire table
@@ -2200,7 +2200,7 @@ This returns 5-20 items instead of scanning 10,000+ items. **95% cost reduction*
 
 **Q: "What are your biggest technical risks?"**
 
-A: "Top 5 risks:
+A:Top 5 risks:
 
 **1. Lambda cold starts** (1-2 second delays)
 - Impact: Poor UX on first request
@@ -2226,7 +2226,7 @@ A: "Top 5 risks:
 
 **Q: "What happens if DynamoDB goes down?"**
 
-A: "DynamoDB has 99.99% uptime SLA (4 minutes downtime/month), but if it does go down:
+A:DynamoDB has 99.99% uptime SLA (4 minutes downtime/month), but if it does go down:
 
 **Immediate response**:
 - API returns 503 Service Unavailable
@@ -2248,7 +2248,7 @@ A: "DynamoDB has 99.99% uptime SLA (4 minutes downtime/month), but if it does go
 
 **Q: "What's your backup/disaster recovery plan?"**
 
-A: "**Backups**:
+A:**Backups**:
 - DynamoDB Continuous Backups (Point-in-Time Recovery)
 - Cost: $0.20 per GB-month
 - Restore to any second in last 35 days
@@ -2281,7 +2281,7 @@ A: "**Backups**:
 
 **Q: "What's your MVP? What can you cut?"**
 
-A: "**MVP (Week 4)**:
+A:**MVP (Week 4)**:
 - ✅ DynamoDB table with basic structure
 - ✅ CRUD API endpoints (create, read, update, delete)
 - ✅ ML algorithm running server-side
@@ -2308,7 +2308,7 @@ The MVP should prove: 'Can we collect data in a scalable database and improve pr
 
 **Q: "How long will this take to build?"**
 
-A: "**Realistic timeline**:
+A:**Realistic timeline**:
 
 **Week 1: Infrastructure** (8-12 hours)
 - Set up AWS CDK project
@@ -2348,7 +2348,7 @@ Full-time: Could finish in 1 week."
 
 **Q: "How will you test this?"**
 
-A: "**Testing strategy**:
+A:**Testing strategy**:
 
 **1. Unit Tests** (Lambda functions)
 - Jest for TypeScript
@@ -2388,7 +2388,7 @@ A: "**Testing strategy**:
 
 **Q: "How will you add authentication later without breaking things?"**
 
-A: "**Migration path**:
+A:**Migration path**:
 
 **Step 1: Add Cognito (no enforcement)**
 - Deploy Cognito User Pool
@@ -2412,13 +2412,13 @@ A: "**Migration path**:
 - Remove 'global' user support
 - All queries scoped to userId
 
-**Key insight**: By using `userId#X` as PK from day 1, we're already prepared for multi-tenancy. We just change the `X` from 'global' to actual user IDs."
+By using `userId#X` as PK from day 1, we're already prepared for multi-tenancy. We just change the `X` from 'global' to actual user IDs.
 
 ---
 
 **Q: "How will you partition data by agency when you add seats?"**
 
-A: "Two approaches:
+A:Two approaches:
 
 **Option 1: Agency-level data sharing** (recommended)
 ```
